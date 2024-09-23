@@ -230,9 +230,13 @@ else:
                 # Set the flag to red (flag value 1)
                 note.flags = 1
 
+                # Add AI-generated tag
+                note.add_tag("AI-generated")
+
                 # If preview is enabled, show the card before adding
                 if config.get("PREVIEW_ENABLED", False):
                     preview_text = "\n".join([f"{fn}: {note.fields[idx]}" for idx, fn in enumerate(field_names)])
+                    preview_text += "\nTags: " + " ".join(note.tags)
                     msg_box = QMessageBox()
                     msg_box.setWindowTitle(f"Preview Generated Card {i+1}")
                     msg_box.setText("Review the generated card before adding it:")
@@ -269,52 +273,6 @@ else:
         except (ValueError, json.JSONDecodeError):
             return None
 
-def generate_trivia_card():
-    # Fetch a trivia question from an API
-    response = requests.get("https://opentdb.com/api.php?amount=1&type=multiple")
-    if response.status_code != 200:
-        showInfo("Failed to fetch trivia question.")
-        return
-
-    data = response.json()
-    question_data = data['results'][0]
-
-    question = question_data['question']
-    correct_answer = question_data['correct_answer']
-    incorrect_answers = question_data['incorrect_answers']
-
-    # Prepare the note
-    deck_name = "Trivia"
-    model_name = "Basic"
-
-    # Get the deck and model
-    deck_id = mw.col.decks.id(deck_name)
-    mw.col.decks.select(deck_id)
-    model = mw.col.models.byName(model_name)
-    if not model:
-        showInfo(f"Model '{model_name}' not found.")
-        return
-
-    # Create a new note
-    note = Note(mw.col, model)
-    note.fields[0] = question  # Front
-    # Combine correct and incorrect answers for multiple choice
-    all_answers = incorrect_answers + [correct_answer]
-    # Shuffle the answers
-    random.shuffle(all_answers)
-    # Format the answers as options
-    formatted_answers = "\n".join([f"{idx + 1}. {ans}" for idx, ans in enumerate(all_answers)])
-    note.fields[1] = f"Correct Answer: {correct_answer}\nOptions:\n{formatted_answers}"  # Back
-
-    # Set the flag to red (flag value 1)
-    note.flags = 1
-
-    # Add the note to the collection
-    mw.col.addNote(note)
-    mw.col.reset()
-    mw.reset()
-    showInfo("Added a new trivia card!")
-
 def toggle_preview():
     # Toggle the preview setting
     current = config.get("PREVIEW_ENABLED", False)
@@ -324,15 +282,10 @@ def toggle_preview():
     showInfo(f"Preview feature has been {status}.")
 
 def add_menu_items():
-    # Generate Trivia Card Action
-    trivia_action = QAction("Generate Trivia Card", mw)
-    trivia_action.triggered.connect(generate_trivia_card)
-    mw.form.menuTools.addAction(trivia_action)
-
-    # Generate Card with OpenAI Action
-    openai_action = QAction("Generate Card(s) with OpenAI", mw)
-    openai_action.triggered.connect(generate_card_with_openai)
-    mw.form.menuTools.addAction(openai_action)
+    # Generate Card Action
+    generate_action = QAction("Generate Card(s)", mw)
+    generate_action.triggered.connect(generate_card_with_openai)
+    mw.form.menuTools.addAction(generate_action)
 
     # Toggle Preview Feature Action
     preview_action = QAction("Toggle Preview Feature", mw)
