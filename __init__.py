@@ -25,6 +25,9 @@ def get_config():
         api_key, ok = QInputDialog.getText(mw, "OpenAI API Key", "Enter your OpenAI API key:")
         if ok and api_key:
             config["OPENAI_API_KEY"] = api_key
+        else:
+            showInfo("OpenAI API key is required to use this add-on.")
+            return {}
         # Set default for preview feature
         config["PREVIEW_ENABLED"] = False
         with open(config_file, "w") as f:
@@ -56,6 +59,9 @@ else:
         # Prompt the user to select a deck
         decks = mw.col.decks.all_names_and_ids()
         deck_names = [d['name'] for d in decks]
+        if not deck_names:
+            showInfo("No decks found. Please create a deck first.")
+            return
         deck_name, ok = QInputDialog.getItem(
             mw, "Select Deck", "Select the deck to add the card to:", deck_names, 0, False
         )
@@ -93,6 +99,9 @@ else:
 
         # Get the fields of the model
         field_names = [fld['name'] for fld in model['flds']]
+        if not field_names:
+            showInfo(f"No fields found in model '{model_name}'.")
+            return
 
         # Create a JSON format of the card type
         json_format = {field_name: "..." for field_name in field_names}
@@ -100,6 +109,9 @@ else:
 
         # Fetch up to 5 sample cards from the deck
         sample_count = min(5, len(note_ids))
+        if sample_count == 0:
+            showInfo(f"No existing cards to sample in deck '{deck_name}'. Please add some notes first.")
+            return
         sample_note_ids = random.sample(note_ids, sample_count)
         samples = []
         for nid in sample_note_ids:
@@ -114,6 +126,7 @@ else:
             f"Please generate a new flashcard on the topic of '{{topic}}' that matches the style and structure of the examples.\n\n"
             f"Here are the examples:\n{samples_json}\n\n"
             f"Now, generate a new flashcard in the same JSON format with the keys {list(field_names)}. "
+            "Ensure that the 'front' field is unique and does not duplicate any existing 'front' terms in the deck. "
             "Only include the JSON in your response without any additional text."
         )
 
@@ -159,6 +172,23 @@ else:
             # Set the deck for the note
             note.model()['did'] = deck_id
 
+            # Ensure 'front' field exists
+            if 'front' not in flashcard:
+                showInfo("The generated card does not contain a 'front' field. Please check the model's field names.")
+                return
+
+            # Check for duplicate 'front' term in the deck
+            front_term = flashcard['front'].strip()
+            if not front_term:
+                showInfo("The 'front' field of the generated card is empty. Please generate a valid card.")
+                return
+
+            # Search for existing cards with the same front term
+            duplicate_notes = mw.col.find_notes(f'"front:{front_term}"')
+            if duplicate_notes:
+                showInfo(f"A card with the front term '{front_term}' already exists in the deck '{deck_name}'. The generated card will not be added to avoid duplication.")
+                return
+
             # If preview is enabled, show the card before adding
             if config.get("PREVIEW_ENABLED", False):
                 preview_text = "\n".join([f"{fn}: {note.fields[idx]}" for idx, fn in enumerate(field_names)])
@@ -177,7 +207,7 @@ else:
             mw.col.addNote(note)
             mw.col.reset()
             mw.reset()
-            showInfo("Added a new card from OpenAI!")
+            showInfo(f"Added a new card from OpenAI with front term '{front_term}'!")
         except json.JSONDecodeError:
             showInfo("The response was not valid JSON. Please check the examples and try again.")
         except requests.exceptions.RequestException as e:
