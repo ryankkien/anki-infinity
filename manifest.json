@@ -1,0 +1,8 @@
+{
+    "name": "Infinite Card Generator",
+    "version": "1.0",
+    "author": "ryankkien",
+    "description": "Generates infinite cards on a given topic.",
+    "anki_version": "2.1.0"
+  }
+  
