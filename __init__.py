@@ -1,4 +1,3 @@
-
 import sys
 import os
 import json
@@ -13,17 +12,29 @@ lib_path = os.path.join(addon_path, "lib")
 if lib_path not in sys.path:
     sys.path.insert(0, lib_path)
 
-# Set your OpenAI API key securely.
-# It's recommended to set the API key as an environment variable named 'OPENAI_API_KEY'.
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+# Function to get or set the OpenAI API key
+def get_openai_api_key():
+    config_file = os.path.join(addon_path, "config.json")
+    if os.path.exists(config_file):
+        with open(config_file, "r") as f:
+            config = json.load(f)
+            return config.get("OPENAI_API_KEY")
+    else:
+        api_key, ok = QInputDialog.getText(mw, "OpenAI API Key", "Enter your OpenAI API key:")
+        if ok and api_key:
+            with open(config_file, "w") as f:
+                json.dump({"OPENAI_API_KEY": api_key}, f)
+            return api_key
+    return None
+
+# Get the OpenAI API key
+OPENAI_API_KEY = get_openai_api_key()
 
 if not OPENAI_API_KEY:
     showInfo(
         "OpenAI API key not found.\n"
-        "Please set the OPENAI_API_KEY environment variable."
+        "Please enter a valid OpenAI API key when prompted."
     )
-    # Optionally, you can disable the functionality here if the API key is not set.
-    # For now, we'll just return to avoid errors.
     def generate_card_with_openai():
         showInfo("OpenAI API key is not set. Cannot generate card.")
         return
