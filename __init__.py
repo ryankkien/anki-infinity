@@ -6,6 +6,7 @@ from aqt import mw
 from aqt.qt import QAction, QInputDialog, QMessageBox
 from aqt.utils import showInfo
 from anki.notes import Note
+import random
 
 addon_path = os.path.dirname(__file__)
 lib_path = os.path.join(addon_path, "lib")
@@ -54,7 +55,7 @@ else:
     def generate_card_with_openai():
         # Prompt the user to select a deck
         decks = mw.col.decks.all_names_and_ids()
-        deck_names = [d.name for d in decks]
+        deck_names = [d['name'] for d in decks]
         deck_name, ok = QInputDialog.getItem(
             mw, "Select Deck", "Select the deck to add the card to:", deck_names, 0, False
         )
@@ -97,6 +98,25 @@ else:
         json_format = {field_name: "..." for field_name in field_names}
         json_format_str = json.dumps(json_format)
 
+        # Fetch up to 5 sample cards from the deck
+        sample_count = min(5, len(note_ids))
+        sample_note_ids = random.sample(note_ids, sample_count)
+        samples = []
+        for nid in sample_note_ids:
+            note = mw.col.getNote(nid)
+            sample = {field: note.fields[idx] for idx, field in enumerate(field_names)}
+            samples.append(sample)
+        samples_json = json.dumps(samples, indent=2)
+
+        # Create the prompt for the OpenAI API
+        prompt = (
+            f"I will provide you with examples of flashcards from a deck. "
+            f"Please generate a new flashcard on the topic of '{{topic}}' that matches the style and structure of the examples.\n\n"
+            f"Here are the examples:\n{samples_json}\n\n"
+            f"Now, generate a new flashcard in the same JSON format with the keys {list(field_names)}. "
+            "Only include the JSON in your response without any additional text."
+        )
+
         # Prompt the user for a topic
         topic, ok = QInputDialog.getText(
             mw, "Enter Topic", "Enter the topic for the flashcard:"
@@ -104,12 +124,8 @@ else:
         if not ok or not topic:
             return
 
-        # Create the prompt for the OpenAI API
-        prompt = (
-            f"Generate a flashcard on the topic of '{topic}'. "
-            f"Provide the output strictly in JSON format matching this structure: {json_format_str} "
-            "Only include the JSON in your response without any additional text."
-        )
+        # Final prompt with the actual topic
+        final_prompt = prompt.replace("{topic}", topic)
 
         try:
             # Make the API call to OpenAI
@@ -121,9 +137,9 @@ else:
                 "model": "gpt-3.5-turbo",
                 "messages": [
                     {"role": "system", "content": "You are an expert teacher."},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": final_prompt}
                 ],
-                "max_tokens": 500,
+                "max_tokens": 1000,
                 "temperature": 0.7
             }
             response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
@@ -163,7 +179,7 @@ else:
             mw.reset()
             showInfo("Added a new card from OpenAI!")
         except json.JSONDecodeError:
-            showInfo("The response was not valid JSON.")
+            showInfo("The response was not valid JSON. Please check the examples and try again.")
         except requests.exceptions.RequestException as e:
             showInfo(f"OpenAI API error: {str(e)}")
         except Exception as e:
@@ -201,7 +217,6 @@ def generate_trivia_card():
     # Combine correct and incorrect answers for multiple choice
     all_answers = incorrect_answers + [correct_answer]
     # Shuffle the answers
-    import random
     random.shuffle(all_answers)
     # Format the answers as options
     formatted_answers = "\n".join([f"{idx + 1}. {ans}" for idx, ans in enumerate(all_answers)])
