@@ -2,7 +2,7 @@
 
 An Anki add-on that utilizes OpenAI's GPT-4 API to generate flashcards based on user-specified topics, seamlessly integrating them into your existing Anki decks. This tool is designed to enhance your study sessions by creating personalized flashcards that match the style and structure of your current decks.
 
-https://youtu.be/mhKHL5okRLk
+<https://youtu.be/mhKHL5okRLk>
 
 ## Features
 
@@ -16,6 +16,12 @@ https://youtu.be/mhKHL5okRLk
 - **Error Logging**: All errors are logged in a timestamped log file within the add-on's directory for troubleshooting.
 
 ## Installation
+
+### Through Anki
+
+<https://ankiweb.net/shared/info/2041588669?cb=1727133847235>
+
+### Through GitHub
 
 1. **Download the Add-on Files**: Clone or download this repository to your computer.
 
