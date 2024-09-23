@@ -2,6 +2,8 @@
 
 An Anki add-on that utilizes OpenAI's GPT-4 API to generate flashcards based on user-specified topics, seamlessly integrating them into your existing Anki decks. This tool is designed to enhance your study sessions by creating personalized flashcards that match the style and structure of your current decks.
 
+https://youtu.be/mhKHL5okRLk
+
 ## Features
 
 - **Deck and Note Type Selection**: Choose the specific deck and note type (model) where the new flashcards will be added.
