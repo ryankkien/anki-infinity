@@ -207,7 +207,7 @@ else:
                 "Content-Type": "application/json"
             }
             data = {
-                "model": "gpt-3.5-turbo-0613",  # Use a model that supports function calling
+                "model": "gpt-4o-mini",  # Use a model that supports function calling
                 "messages": messages,
                 "functions": [function],
                 "function_call": {"name": "create_flashcard"},
