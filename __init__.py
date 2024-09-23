@@ -254,10 +254,10 @@ else:
                         msg_box.setWindowTitle(f"Preview Generated Card {i+1}")
                         msg_box.setText("Review the generated card before adding it:")
                         msg_box.setDetailedText(preview_text)
-                        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-                        msg_box.setDefaultButton(QMessageBox.Yes)
-                        ret = msg_box.exec_()
-                        if ret != QMessageBox.Yes:
+                        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                        msg_box.setDefaultButton(QMessageBox.StandardButton.Yes)
+                        ret = msg_box.exec()
+                        if ret != QMessageBox.StandardButton.Yes:
                             showInfo(f"Card {i+1} addition canceled by user.")
                             continue
 
