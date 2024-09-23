@@ -247,12 +247,12 @@ else:
                     note.add_tag("AI-generated")
 
                     # If preview is enabled, show the card before adding
-                    if config.get("PREVIEW_ENABLED", False):
+                    if config.get("PREVIEW_ENABLED", True):
                         preview_text = "\n".join([f"{fn}: {note.fields[idx]}" for idx, fn in enumerate(field_names)])
                         preview_text += "\nTags: " + " ".join(note.tags)
                         msg_box = QMessageBox()
                         msg_box.setWindowTitle(f"Preview Generated Card {i+1}")
-                        msg_box.setText("Review the generated card before adding it:")
+                        msg_box.setText("Show details to see card generated, Press Yes to add, No to remove:")
                         msg_box.setDetailedText(preview_text)
                         msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
                         msg_box.setDefaultButton(QMessageBox.StandardButton.Yes)
