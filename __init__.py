@@ -132,7 +132,7 @@ else:
         samples_json = json.dumps(samples, indent=2)
 
         # Adjusted prompt with more precise instructions
-        prompt = (
+        prompt_template = (
             f"I will provide you with examples of flashcards from a deck. "
             f"Please generate a new flashcard on the topic of '{{topic}}' that matches the style and structure of the examples.\n\n"
             f"Here are the examples:\n{samples_json}\n\n"
@@ -143,101 +143,123 @@ else:
 
         # Prompt the user for a topic
         topic, ok = QInputDialog.getText(
-            mw, "Enter Topic", "Enter the topic for the flashcard:"
+            mw, "Enter Topic", "Enter the topic for the flashcards:"
         )
         if not ok or not topic:
             return
 
-        # Final prompt with the actual topic
-        final_prompt = prompt.replace("{topic}", topic)
-
+        # Prompt the user for the number of cards to generate
+        num_cards_str, ok = QInputDialog.getText(
+            mw, "Number of Cards", "Enter the number of cards to generate (e.g., 5):"
+        )
+        if not ok or not num_cards_str:
+            return
         try:
-            # Make the API call to OpenAI
-            headers = {
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            data = {
-                "model": "gpt-4o-mini",
-                "messages": [
-                    {"role": "system", "content": "You are an expert teacher."},
-                    {"role": "user", "content": final_prompt}
-                ],
-                "max_tokens": 1000,
-                "temperature": 0.0  # Set temperature to 0 for deterministic output
-            }
-            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
-            response.raise_for_status()
+            num_cards = int(num_cards_str)
+            if num_cards <= 0:
+                raise ValueError
+        except ValueError:
+            showInfo("Please enter a valid positive integer for the number of cards.")
+            return
 
-            # Extract the assistant's response
-            content = response.json()['choices'][0]['message']['content'].strip()
+        generated_cards = 0
+        duplicate_cards = 0
+
+        for i in range(num_cards):
+            final_prompt = prompt_template.replace("{topic}", topic)
 
             try:
-                # Parse the JSON output directly
-                flashcard = json.loads(content)
-            except json.JSONDecodeError:
-                # Try to extract JSON from the assistant's response
-                flashcard = extract_json(content)
-                if flashcard is None:
-                    showInfo(
-                        "The response was not valid JSON. Please check the examples and try again."
-                        f"\n\nPrompt:\n{final_prompt}\n\nResponse:\n{content}"
-                    )
-                    return
+                # Make the API call to OpenAI
+                headers = {
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                data = {
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {"role": "system", "content": "You are an expert teacher."},
+                        {"role": "user", "content": final_prompt}
+                    ],
+                    "max_tokens": 1000,
+                    "temperature": 0.7  # Use higher temperature for more variation
+                }
+                response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
+                response.raise_for_status()
 
-            # Prepare the note
-            note = Note(mw.col, model)
-            for idx, field_name in enumerate(field_names):
-                note.fields[idx] = flashcard.get(field_name, "")
+                # Extract the assistant's response
+                content = response.json()['choices'][0]['message']['content'].strip()
 
-            # Set the deck for the note
-            note.model()['did'] = deck_id
+                try:
+                    # Parse the JSON output directly
+                    flashcard = json.loads(content)
+                except json.JSONDecodeError:
+                    # Try to extract JSON from the assistant's response
+                    flashcard = extract_json(content)
+                    if flashcard is None:
+                        showInfo(
+                            f"The response was not valid JSON for card {i+1}. Skipping this card."
+                            f"\n\nPrompt:\n{final_prompt}\n\nResponse:\n{content}"
+                        )
+                        continue
 
-            # Ensure 'front' field exists
-            if front_field_name not in flashcard:
-                showInfo(f"The generated card does not contain a '{front_field_name}' field. Please check the model's field names.")
-                return
+                # Ensure 'front' field exists
+                if front_field_name not in flashcard:
+                    showInfo(f"The generated card does not contain a '{front_field_name}' field. Skipping this card.")
+                    continue
 
-            # Check for duplicate 'front' term in the deck
-            front_term = flashcard[front_field_name].strip()
-            if not front_term:
-                showInfo(f"The '{front_field_name}' field of the generated card is empty. Please generate a valid card.")
-                return
+                # Check for duplicate 'front' term in the deck
+                front_term = flashcard[front_field_name].strip()
+                if not front_term:
+                    showInfo(f"The '{front_field_name}' field of the generated card is empty. Skipping this card.")
+                    continue
 
-            # Search for existing cards with the same front term in the deck
-            duplicate_note_ids = mw.col.find_notes(f'"deck:{deck_name}" "{front_field_name}:{front_term}"')
-            if duplicate_note_ids:
-                showInfo(f"A card with the {front_field_name} '{front_term}' already exists in the deck '{deck_name}'. The generated card will not be added to avoid duplication.")
-                return
+                # Search for existing cards with the same front term in the deck
+                duplicate_note_ids = mw.col.find_notes(f'"deck:{deck_name}" "{front_field_name}:{front_term}"')
+                if duplicate_note_ids:
+                    duplicate_cards += 1
+                    continue
 
-            # If preview is enabled, show the card before adding
-            if config.get("PREVIEW_ENABLED", False):
-                preview_text = "\n".join([f"{fn}: {note.fields[idx]}" for idx, fn in enumerate(field_names)])
-                msg_box = QMessageBox()
-                msg_box.setWindowTitle("Preview Generated Card")
-                msg_box.setText("Review the generated card before adding it:")
-                msg_box.setDetailedText(preview_text)
-                msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-                msg_box.setDefaultButton(QMessageBox.Yes)
-                ret = msg_box.exec_()
-                if ret != QMessageBox.Yes:
-                    showInfo("Card addition canceled by user.")
-                    return
+                # Prepare the note
+                note = Note(mw.col, model)
+                for idx, field_name in enumerate(field_names):
+                    note.fields[idx] = flashcard.get(field_name, "")
 
-            # Add the note to the collection
-            mw.col.addNote(note)
-            mw.col.reset()
-            mw.reset()
-            showInfo(f"Added a new card from OpenAI with {front_field_name} '{front_term}'!")
-        except requests.exceptions.RequestException as e:
-            showInfo(f"OpenAI API error: {str(e)}\n\nPrompt:\n{final_prompt}\n\nResponse:\n{content}")
-        except Exception as e:
-            showInfo(f"An unexpected error occurred: {str(e)}\n\nPrompt:\n{final_prompt}\n\nResponse:\n{content}")
+                # Set the deck for the note
+                note.model()['did'] = deck_id
+
+                # Set the flag to red (flag value 1)
+                note.flags = 1
+
+                # If preview is enabled, show the card before adding
+                if config.get("PREVIEW_ENABLED", False):
+                    preview_text = "\n".join([f"{fn}: {note.fields[idx]}" for idx, fn in enumerate(field_names)])
+                    msg_box = QMessageBox()
+                    msg_box.setWindowTitle(f"Preview Generated Card {i+1}")
+                    msg_box.setText("Review the generated card before adding it:")
+                    msg_box.setDetailedText(preview_text)
+                    msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                    msg_box.setDefaultButton(QMessageBox.Yes)
+                    ret = msg_box.exec_()
+                    if ret != QMessageBox.Yes:
+                        showInfo(f"Card {i+1} addition canceled by user.")
+                        continue
+
+                # Add the note to the collection
+                mw.col.addNote(note)
+                generated_cards += 1
+
+            except requests.exceptions.RequestException as e:
+                showInfo(f"OpenAI API error on card {i+1}: {str(e)}\n\nPrompt:\n{final_prompt}\n\nResponse:\n{content}")
+            except Exception as e:
+                showInfo(f"An unexpected error occurred on card {i+1}: {str(e)}\n\nPrompt:\n{final_prompt}\n\nResponse:\n{content}")
+
+        mw.col.reset()
+        mw.reset()
+        showInfo(f"Finished generating cards.\nGenerated: {generated_cards}\nDuplicates skipped: {duplicate_cards}")
 
     # Helper function to extract JSON from the assistant's response
     def extract_json(text):
         import json
-        import re
         try:
             # Find the first occurrence of '{' and the last occurrence of '}'
             start = text.index('{')
@@ -284,6 +306,9 @@ def generate_trivia_card():
     formatted_answers = "\n".join([f"{idx + 1}. {ans}" for idx, ans in enumerate(all_answers)])
     note.fields[1] = f"Correct Answer: {correct_answer}\nOptions:\n{formatted_answers}"  # Back
 
+    # Set the flag to red (flag value 1)
+    note.flags = 1
+
     # Add the note to the collection
     mw.col.addNote(note)
     mw.col.reset()
@@ -305,7 +330,7 @@ def add_menu_items():
     mw.form.menuTools.addAction(trivia_action)
 
     # Generate Card with OpenAI Action
-    openai_action = QAction("Generate Card with OpenAI", mw)
+    openai_action = QAction("Generate Card(s) with OpenAI", mw)
     openai_action.triggered.connect(generate_card_with_openai)
     mw.form.menuTools.addAction(openai_action)
 
