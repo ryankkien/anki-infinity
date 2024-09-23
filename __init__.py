@@ -3,7 +3,7 @@ import os
 import json
 import requests
 from aqt import mw
-from aqt.qt import QAction, QInputDialog
+from aqt.qt import QAction, QInputDialog, QMessageBox
 from aqt.utils import showInfo
 from anki.notes import Note
 
@@ -12,23 +12,35 @@ lib_path = os.path.join(addon_path, "lib")
 if lib_path not in sys.path:
     sys.path.insert(0, lib_path)
 
-# Function to get or set the OpenAI API key
-def get_openai_api_key():
+# Function to get or set the OpenAI API key and other configurations
+def get_config():
     config_file = os.path.join(addon_path, "config.json")
     if os.path.exists(config_file):
         with open(config_file, "r") as f:
-            config = json.load(f)
-            return config.get("OPENAI_API_KEY")
+            return json.load(f)
     else:
+        config = {}
+        # Prompt for OpenAI API Key
         api_key, ok = QInputDialog.getText(mw, "OpenAI API Key", "Enter your OpenAI API key:")
         if ok and api_key:
-            with open(config_file, "w") as f:
-                json.dump({"OPENAI_API_KEY": api_key}, f)
-            return api_key
-    return None
+            config["OPENAI_API_KEY"] = api_key
+        # Set default for preview feature
+        config["PREVIEW_ENABLED"] = False
+        with open(config_file, "w") as f:
+            json.dump(config, f, indent=4)
+        return config
+
+# Load configuration
+config = get_config()
+
+# Function to save configuration
+def save_config():
+    config_file = os.path.join(addon_path, "config.json")
+    with open(config_file, "w") as f:
+        json.dump(config, f, indent=4)
 
 # Get the OpenAI API key
-OPENAI_API_KEY = get_openai_api_key()
+OPENAI_API_KEY = config.get("OPENAI_API_KEY")
 
 if not OPENAI_API_KEY:
     showInfo(
@@ -40,22 +52,67 @@ if not OPENAI_API_KEY:
         return
 else:
     def generate_card_with_openai():
-        # Prompt the user for a topic.
+        # Prompt the user to select a deck
+        decks = mw.col.decks.all_names_and_ids()
+        deck_names = [d.name for d in decks]
+        deck_name, ok = QInputDialog.getItem(
+            mw, "Select Deck", "Select the deck to add the card to:", deck_names, 0, False
+        )
+        if not ok or not deck_name:
+            return
+
+        # Get the deck ID
+        deck_id = mw.col.decks.id(deck_name)
+
+        # Get the models (note types) used in the selected deck
+        note_ids = mw.col.find_notes(f'"deck:{deck_name}"')
+        models_in_deck = set()
+        for nid in note_ids:
+            note = mw.col.getNote(nid)
+            models_in_deck.add(note.model()['name'])
+
+        if not models_in_deck:
+            showInfo(f"No notes found in deck '{deck_name}'. Please add some notes first.")
+            return
+        elif len(models_in_deck) == 1:
+            model_name = models_in_deck.pop()
+        else:
+            # Prompt the user to select a model if multiple are found
+            model_name, ok = QInputDialog.getItem(
+                mw, "Select Note Type", "Multiple note types found. Select one:", list(models_in_deck), 0, False
+            )
+            if not ok or not model_name:
+                return
+
+        # Get the model
+        model = mw.col.models.byName(model_name)
+        if not model:
+            showInfo(f"Model '{model_name}' not found.")
+            return
+
+        # Get the fields of the model
+        field_names = [fld['name'] for fld in model['flds']]
+
+        # Create a JSON format of the card type
+        json_format = {field_name: "..." for field_name in field_names}
+        json_format_str = json.dumps(json_format)
+
+        # Prompt the user for a topic
         topic, ok = QInputDialog.getText(
             mw, "Enter Topic", "Enter the topic for the flashcard:"
         )
         if not ok or not topic:
             return
 
-        # Create the prompt for the OpenAI API.
+        # Create the prompt for the OpenAI API
         prompt = (
-            f"Generate a flashcard on the topic of {topic}. "
-            "Provide the output strictly in JSON format with the keys 'question' and 'answer'. "
-            "Do not include any additional text."
+            f"Generate a flashcard on the topic of '{topic}'. "
+            f"Provide the output strictly in JSON format matching this structure: {json_format_str} "
+            "Only include the JSON in your response without any additional text."
         )
 
         try:
-            # Make the API call to OpenAI.
+            # Make the API call to OpenAI
             headers = {
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
                 "Content-Type": "application/json"
@@ -72,39 +129,35 @@ else:
             response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
             response.raise_for_status()
 
-            # Extract the assistant's response.
-            content = response.json()['choices'][0]['message']['content']
+            # Extract the assistant's response
+            content = response.json()['choices'][0]['message']['content'].strip()
 
-            # Parse the JSON output.
+            # Parse the JSON output
             flashcard = json.loads(content)
 
-            question = flashcard.get('question')
-            answer = flashcard.get('answer')
-
-            if not question or not answer:
-                showInfo("Failed to get valid flashcard data.")
-                return
-
-            # Prepare the note.
-            deck_name = "OpenAI Generated Cards"
-            model_name = "Basic"
-
-            # Get or create the deck.
-            deck_id = mw.col.decks.id(deck_name)
-            mw.col.decks.select(deck_id)
-
-            # Get the model.
-            model = mw.col.models.byName(model_name)
-            if not model:
-                showInfo(f"Model '{model_name}' not found.")
-                return
-
-            # Create a new note.
+            # Prepare the note
             note = Note(mw.col, model)
-            note.fields[0] = question  # Front side of the card.
-            note.fields[1] = answer    # Back side of the card.
+            for idx, field_name in enumerate(field_names):
+                note.fields[idx] = flashcard.get(field_name, "")
 
-            # Add the note to the collection.
+            # Set the deck for the note
+            note.model()['did'] = deck_id
+
+            # If preview is enabled, show the card before adding
+            if config.get("PREVIEW_ENABLED", False):
+                preview_text = "\n".join([f"{fn}: {note.fields[idx]}" for idx, fn in enumerate(field_names)])
+                msg_box = QMessageBox()
+                msg_box.setWindowTitle("Preview Generated Card")
+                msg_box.setText("Review the generated card before adding it:")
+                msg_box.setDetailedText(preview_text)
+                msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                msg_box.setDefaultButton(QMessageBox.Yes)
+                ret = msg_box.exec_()
+                if ret != QMessageBox.Yes:
+                    showInfo("Card addition canceled by user.")
+                    return
+
+            # Add the note to the collection
             mw.col.addNote(note)
             mw.col.reset()
             mw.reset()
@@ -145,7 +198,14 @@ def generate_trivia_card():
     # Create a new note
     note = Note(mw.col, model)
     note.fields[0] = question  # Front
-    note.fields[1] = correct_answer  # Back
+    # Combine correct and incorrect answers for multiple choice
+    all_answers = incorrect_answers + [correct_answer]
+    # Shuffle the answers
+    import random
+    random.shuffle(all_answers)
+    # Format the answers as options
+    formatted_answers = "\n".join([f"{idx + 1}. {ans}" for idx, ans in enumerate(all_answers)])
+    note.fields[1] = f"Correct Answer: {correct_answer}\nOptions:\n{formatted_answers}"  # Back
 
     # Add the note to the collection
     mw.col.addNote(note)
@@ -153,13 +213,30 @@ def generate_trivia_card():
     mw.reset()
     showInfo("Added a new trivia card!")
 
+def toggle_preview():
+    # Toggle the preview setting
+    current = config.get("PREVIEW_ENABLED", False)
+    config["PREVIEW_ENABLED"] = not current
+    save_config()
+    status = "enabled" if config["PREVIEW_ENABLED"] else "disabled"
+    showInfo(f"Preview feature has been {status}.")
+
 def add_menu_items():
+    # Generate Trivia Card Action
     trivia_action = QAction("Generate Trivia Card", mw)
     trivia_action.triggered.connect(generate_trivia_card)
     mw.form.menuTools.addAction(trivia_action)
 
+    # Generate Card with OpenAI Action
     openai_action = QAction("Generate Card with OpenAI", mw)
     openai_action.triggered.connect(generate_card_with_openai)
     mw.form.menuTools.addAction(openai_action)
+
+    # Toggle Preview Feature Action
+    preview_action = QAction("Toggle Preview Feature", mw)
+    preview_action.setCheckable(True)
+    preview_action.setChecked(config.get("PREVIEW_ENABLED", False))
+    preview_action.triggered.connect(toggle_preview)
+    mw.form.menuTools.addAction(preview_action)
 
 add_menu_items()
