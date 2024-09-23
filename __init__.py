@@ -6,8 +6,11 @@ from aqt import mw
 from aqt.qt import QAction, QInputDialog, QMessageBox
 from aqt.utils import showInfo
 from anki.notes import Note
+<<<<<<< HEAD
 import random
 import logging
+=======
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
 
 # Set up paths
 addon_path = os.path.dirname(__file__)
@@ -95,10 +98,13 @@ else:
         # Prompt the user to select a deck
         decks = mw.col.decks.all_names_and_ids()
         deck_names = [d.name for d in decks]
+<<<<<<< HEAD
         if not deck_names:
             showInfo("No decks found. Please create a deck first.")
             logging.warning("No decks available for generating cards.")
             return
+=======
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
         deck_name, ok = QInputDialog.getItem(
             mw, "Select Deck", "Select the deck to add the card to:", deck_names, 0, False
         )
@@ -174,6 +180,7 @@ else:
             },
         }
 
+<<<<<<< HEAD
         # Fetch up to 5 sample cards from the deck
         sample_count = min(5, len(note_ids))
         if sample_count == 0:
@@ -188,6 +195,8 @@ else:
             samples.append(sample)
         logging.debug(f"Sampled {len(samples)} notes from deck '{deck_name}'.")
 
+=======
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
         # Prompt the user for a topic
         topic, ok = QInputDialog.getText(
             mw, "Enter Topic", "Enter the topic for the flashcard:"
@@ -198,6 +207,7 @@ else:
         logging.debug(f"User entered topic: {topic}")
 
         # Create the prompt for the OpenAI API
+<<<<<<< HEAD
         field_names_str = ", ".join(f'"{name}"' for name in field_names)
         prompt = (
             f"Generate a new flashcard on the topic of '{topic}' that matches the style and structure of the examples provided. "
@@ -211,6 +221,13 @@ else:
             {"role": "user", "content": prompt},
             {"role": "user", "content": f"Here are the examples:\n{json.dumps(samples, indent=2)}"},
         ]
+=======
+        prompt = (
+            f"Generate a flashcard on the topic of '{topic}'. "
+            f"Provide the output strictly in JSON format matching this structure: {json_format_str} "
+            "Only include the JSON in your response without any additional text."
+        )
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
 
         try:
             # Prepare headers and data
@@ -219,11 +236,20 @@ else:
                 "Content-Type": "application/json"
             }
             data = {
+<<<<<<< HEAD
                 "model": "gpt-4o-mini",  # Use a model that supports function calling
                 "messages": messages,
                 "functions": [function],
                 "function_call": {"name": "create_flashcard"},
                 "max_tokens": 1000,
+=======
+                "model": "gpt-3.5-turbo",
+                "messages": [
+                    {"role": "system", "content": "You are an expert teacher."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 500,
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
                 "temperature": 0.7
             }
 
@@ -330,8 +356,12 @@ else:
             logging.info(f"Successfully added new card with '{front_field_name}': '{front_term}' to deck '{deck_name}'.")
 
         except json.JSONDecodeError:
+<<<<<<< HEAD
             showInfo("The response was not valid JSON. Please check the examples and try again.")
             logging.error("Invalid JSON received from OpenAI API.")
+=======
+            showInfo("The response was not valid JSON.")
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
         except requests.exceptions.RequestException as e:
             # Log and show request exceptions
             logging.error("OpenAI API request error: %s", str(e))
@@ -374,6 +404,7 @@ def generate_trivia_card():
             logging.error(f"Model '{model_name}' not found for trivia card.")
             return
 
+<<<<<<< HEAD
         # Create a new note
         note = Note(mw.col, model)
         note.fields[0] = question  # Front
@@ -384,6 +415,19 @@ def generate_trivia_card():
         # Format the answers as options
         formatted_answers = "\n".join([f"{idx + 1}. {ans}" for idx, ans in enumerate(all_answers)])
         note.fields[1] = f"Correct Answer: {correct_answer}\nOptions:\n{formatted_answers}"  # Back
+=======
+    # Create a new note
+    note = Note(mw.col, model)
+    note.fields[0] = question  # Front
+    # Combine correct and incorrect answers for multiple choice
+    all_answers = incorrect_answers + [correct_answer]
+    # Shuffle the answers
+    import random
+    random.shuffle(all_answers)
+    # Format the answers as options
+    formatted_answers = "\n".join([f"{idx + 1}. {ans}" for idx, ans in enumerate(all_answers)])
+    note.fields[1] = f"Correct Answer: {correct_answer}\nOptions:\n{formatted_answers}"  # Back
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
 
         # Add the note to the collection
         mw.col.addNote(note)
