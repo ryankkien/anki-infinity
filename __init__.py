@@ -23,6 +23,10 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+# Helper function to escape double quotes in search terms
+def escape_search_term(term):
+    return term.replace('"', '\\"').replace('\\', '\\\\')
+
 # Function to get or set the OpenAI API key and other configurations
 def get_config():
     config_file = os.path.join(addon_path, "config.json")
@@ -49,6 +53,8 @@ def get_config():
             return {}
         # Set default for preview feature
         config["PREVIEW_ENABLED"] = False
+        # Set default for duplicate checking
+        config["DUPLICATE_CHECK_ENABLED"] = False
         try:
             with open(config_file, "w") as f:
                 json.dump(config, f, indent=4)
@@ -112,7 +118,7 @@ else:
             return
 
         # Get the models (note types) used in the selected deck
-        note_ids = mw.col.find_notes(f'"deck:{deck_name}"')
+        note_ids = mw.col.find_notes(f'deck:"{deck_name}"')
         models_in_deck = set()
         for nid in note_ids:
             note = mw.col.getNote(nid)
@@ -148,6 +154,10 @@ else:
             showInfo(f"No fields found in model '{model_name}'.")
             logging.error(f"No fields found in model '{model_name}'.")
             return
+
+        # Dynamically determine the front field name
+        front_field_name = field_names[0]
+        logging.debug(f"Determined front field name: '{front_field_name}'")
 
         # Create a JSON schema for the function
         properties = {}
@@ -188,8 +198,10 @@ else:
         logging.debug(f"User entered topic: {topic}")
 
         # Create the prompt for the OpenAI API
+        field_names_str = ", ".join(f'"{name}"' for name in field_names)
         prompt = (
             f"Generate a new flashcard on the topic of '{topic}' that matches the style and structure of the examples provided. "
+            f"Use the following field names exactly: {field_names_str}. "
             "Ensure that the front field is unique and does not duplicate any existing front terms in the deck."
         )
 
@@ -252,34 +264,48 @@ else:
 
             # Prepare the note
             note = Note(mw.col, model)
+
+            # Map assistant's field names to model's field names
+            assistant_field_names = list(flashcard.keys())
+            logging.debug("Assistant field names: %s", assistant_field_names)
+
+            # Assign fields to the note with matching
+            logging.debug("Assigning fields to note:")
             for idx, field_name in enumerate(field_names):
-                note.fields[idx] = flashcard.get(field_name, "")
+                # Try to find a matching field name (case-insensitive)
+                matching_field = next((key for key in assistant_field_names if key.lower() == field_name.lower()), None)
+                if matching_field:
+                    value = flashcard.get(matching_field, "")
+                    note.fields[idx] = value
+                    logging.debug("Assigned '%s' to field '%s': '%s'", matching_field, field_name, value)
+                else:
+                    note.fields[idx] = ""
+                    logging.warning("No matching field for '%s' in assistant's response.", field_name)
 
             # Set the deck for the note
             note.model()['did'] = deck_id
 
-            # Define the front field name (adjust if your model uses a different name)
-            front_field_name = 'Front'  # Change this if your front field has a different name
-
             # Ensure 'front' field exists
-            if front_field_name not in flashcard:
-                showInfo(f"The generated card does not contain a '{front_field_name}' field. Please check the model's field names.")
-                logging.error(f"'{front_field_name}' field missing in generated flashcard.")
-                return
-
-            # Check for duplicate 'front' term in the deck
-            front_term = flashcard[front_field_name].strip()
+            front_term = note[front_field_name].strip()
             if not front_term:
                 showInfo(f"The '{front_field_name}' field of the generated card is empty. Please generate a valid card.")
                 logging.warning(f"Generated '{front_field_name}' field is empty.")
                 return
 
-            # Search for existing cards with the same front term in the deck
-            duplicate_note_ids = mw.col.find_notes(f'deck:"{deck_name}" "{front_field_name}":"{front_term}"')
-            if duplicate_note_ids:
-                showInfo(f"A card with the {front_field_name} '{front_term}' already exists in the deck '{deck_name}'. The generated card will not be added to avoid duplication.")
-                logging.info(f"Duplicate card with '{front_field_name}': '{front_term}' found in deck '{deck_name}'.")
-                return
+            # Duplicate checking is now optional and turned off by default
+            if config.get("DUPLICATE_CHECK_ENABLED", False):
+                # Escape the search terms
+                deck_name_escaped = escape_search_term(deck_name)
+                front_term_escaped = escape_search_term(front_term)
+
+                # Search for existing cards with the same front term in the deck
+                duplicate_search_query = f'deck:"{deck_name_escaped}" "{front_field_name}":"{front_term_escaped}"'
+                logging.debug(f"Duplicate search query: {duplicate_search_query}")
+                duplicate_note_ids = mw.col.find_notes(duplicate_search_query)
+                if duplicate_note_ids:
+                    showInfo(f"A card with the {front_field_name} '{front_term}' already exists in the deck '{deck_name}'. The generated card will not be added to avoid duplication.")
+                    logging.info(f"Duplicate card with '{front_field_name}': '{front_term}' found in deck '{deck_name}'.")
+                    return
 
             # If preview is enabled, show the card before adding
             if config.get("PREVIEW_ENABLED", False):
@@ -386,6 +412,19 @@ def toggle_preview():
         showInfo(f"Failed to toggle preview feature: {str(e)}")
         logging.exception("Failed to toggle preview feature.")
 
+def toggle_duplicate_check():
+    try:
+        # Toggle the duplicate check setting
+        current = config.get("DUPLICATE_CHECK_ENABLED", False)
+        config["DUPLICATE_CHECK_ENABLED"] = not current
+        save_config()
+        status = "enabled" if config["DUPLICATE_CHECK_ENABLED"] else "disabled"
+        showInfo(f"Duplicate check has been {status}.")
+        logging.info(f"Duplicate check toggled to {status}.")
+    except Exception as e:
+        showInfo(f"Failed to toggle duplicate check: {str(e)}")
+        logging.exception("Failed to toggle duplicate check.")
+
 def add_menu_items():
     try:
         # Generate Trivia Card Action
@@ -407,6 +446,14 @@ def add_menu_items():
         preview_action.triggered.connect(toggle_preview)
         mw.form.menuTools.addAction(preview_action)
         logging.debug("Added 'Toggle Preview Feature' menu item.")
+
+        # Toggle Duplicate Check Action
+        duplicate_check_action = QAction("Toggle Duplicate Check", mw)
+        duplicate_check_action.setCheckable(True)
+        duplicate_check_action.setChecked(config.get("DUPLICATE_CHECK_ENABLED", False))
+        duplicate_check_action.triggered.connect(toggle_duplicate_check)
+        mw.form.menuTools.addAction(duplicate_check_action)
+        logging.debug("Added 'Toggle Duplicate Check' menu item.")
     except Exception as e:
         showInfo(f"Failed to add menu items: {str(e)}")
         logging.exception("Failed to add menu items.")
