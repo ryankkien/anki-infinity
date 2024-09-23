@@ -7,8 +7,11 @@ from aqt.qt import QAction, QInputDialog, QMessageBox
 from aqt.utils import showInfo
 from anki.notes import Note
 <<<<<<< HEAD
+<<<<<<< HEAD
 import random
 import logging
+=======
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
 =======
 >>>>>>> parent of f195641 (wait now its few shot learning oops)
 
@@ -99,10 +102,13 @@ else:
         decks = mw.col.decks.all_names_and_ids()
         deck_names = [d.name for d in decks]
 <<<<<<< HEAD
+<<<<<<< HEAD
         if not deck_names:
             showInfo("No decks found. Please create a deck first.")
             logging.warning("No decks available for generating cards.")
             return
+=======
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
 =======
 >>>>>>> parent of f195641 (wait now its few shot learning oops)
         deck_name, ok = QInputDialog.getItem(
@@ -165,6 +171,7 @@ else:
         front_field_name = field_names[0]
         logging.debug(f"Determined front field name: '{front_field_name}'")
 
+<<<<<<< HEAD
         # Create a JSON schema for the function
         properties = {}
         for field_name in field_names:
@@ -197,6 +204,8 @@ else:
 
 =======
 >>>>>>> parent of f195641 (wait now its few shot learning oops)
+=======
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
         # Prompt the user for a topic
         topic, ok = QInputDialog.getText(
             mw, "Enter Topic", "Enter the topic for the flashcard:"
@@ -207,6 +216,7 @@ else:
         logging.debug(f"User entered topic: {topic}")
 
         # Create the prompt for the OpenAI API
+<<<<<<< HEAD
 <<<<<<< HEAD
         field_names_str = ", ".join(f'"{name}"' for name in field_names)
         prompt = (
@@ -222,11 +232,16 @@ else:
             {"role": "user", "content": f"Here are the examples:\n{json.dumps(samples, indent=2)}"},
         ]
 =======
+=======
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
         prompt = (
             f"Generate a flashcard on the topic of '{topic}'. "
             f"Provide the output strictly in JSON format matching this structure: {json_format_str} "
             "Only include the JSON in your response without any additional text."
         )
+<<<<<<< HEAD
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
+=======
 >>>>>>> parent of f195641 (wait now its few shot learning oops)
 
         try:
@@ -249,6 +264,9 @@ else:
                     {"role": "user", "content": prompt}
                 ],
                 "max_tokens": 500,
+<<<<<<< HEAD
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
+=======
 >>>>>>> parent of f195641 (wait now its few shot learning oops)
                 "temperature": 0.7
             }
@@ -357,8 +375,12 @@ else:
 
         except json.JSONDecodeError:
 <<<<<<< HEAD
+<<<<<<< HEAD
             showInfo("The response was not valid JSON. Please check the examples and try again.")
             logging.error("Invalid JSON received from OpenAI API.")
+=======
+            showInfo("The response was not valid JSON.")
+>>>>>>> parent of f195641 (wait now its few shot learning oops)
 =======
             showInfo("The response was not valid JSON.")
 >>>>>>> parent of f195641 (wait now its few shot learning oops)
